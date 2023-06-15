@@ -4,12 +4,12 @@ const mongoose = require('mongoose');
 const User = mongoose.model('User');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const bcrypt = require('bcrypt');
 
 require('dotenv').config();
 
 
 async function mailer(rEmail, code) {
-    console.log('fn called')
 
     let transporter = nodemailer.createTransport({
         host: "smtp.gmail.com",
@@ -30,13 +30,11 @@ async function mailer(rEmail, code) {
         html:`<b>Your verification code is ${code}</b>`
     })
 
-    console.log("Message sent: %s", info.messageId);
 }
 
 
 router.post('/verify', (req, res) => {
     const { email } = req.body;
-    console.log('got email')
     if (!email) {
         return res.status(404).json({msg:"email not found"})
     }
@@ -96,6 +94,84 @@ router.post('/register', async (req, res) => {
             console.log(err);
             return res.status(422).json({err:'user not registered'})
         }
+    }
+})
+
+// forgot password
+router.post('/verifyfp', (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+        return res.status(404).json({msg:"email not found"})
+    }
+    else {
+        User.findOne({ email })
+            .then(async (savedUser) => {
+                if (savedUser) {
+                    try {
+                        let vCode = Math.floor(100000 + Math.random() * 900000);
+                        await mailer(email, vCode)
+                        return res.status(200).json({msg:'Email sent', vCode, email})
+                    }
+                    catch (err) {
+                        return res.status(422).json({msg:"Error sending email"})
+                    }
+                } else {
+                    return res.status(422).json({ msg: "Invalid Credentials" });
+                }
+              
+            })
+    } 
+})
+
+router.post('/resetPassword', (req, res) => {
+    const { email, password } = req.body
+    if (email == '' || password == '') {
+        return res.status(422).json({msg:'Please fill all the fields'})
+    } else {
+        User.findOne({ email })
+            .then(async (savedUser) => {
+                if (savedUser) {
+                    savedUser.password = password;
+                    savedUser.save()
+                        .then(user => {
+                            return res.status(200).json({msg:'password changed successfully'})
+                        }).catch(err => {
+                        console.log(err)
+                    })
+                } else {
+                    return res.status(422).json({ msg: "Invalid Credentials" });
+                    
+                }     
+        })
+    }
+})
+
+//login
+router.post('/login', (req, res) => {
+    const { email, password } = req.body
+    
+    if (!email || !password) {
+        return res.status(422).json({error:'Please fill all the fields'})
+    } else {
+        User.findOne({ email })
+            .then(async (savedUser) => {
+                if (!savedUser) {
+                return res.status(422).json({error:'Invalid credentials'})
+                } else {
+                    bcrypt.compare(password, savedUser.password)
+                        .then(doMatch => {
+                            if (doMatch) { 
+                                const token = jwt.sign({ _id: savedUser._id }, process.env.JWT_SECRET);
+                                const { _id, username, email } = savedUser;
+
+                                return res.status(200).json({msg:'Login Success', token, user:{_id, username, email}})
+                            }
+                            else {
+                                return res.status(422).json({error:'Invalid credentials'})
+                            }
+                    })
+            }
+        }).catch(err=>console.log(err))
     }
 })
 module.exports = router
