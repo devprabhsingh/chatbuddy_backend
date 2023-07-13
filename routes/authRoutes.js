@@ -153,7 +153,7 @@ router.post('/login', (req, res) => {
     if (!email || !password) {
         return res.status(422).json({error:'Please fill all the fields'})
     } else {
-        User.findOne({ email })
+        User.findOne({ email }).select('+password')
             .then(async (savedUser) => {
                 if (!savedUser) {
                 return res.status(422).json({error:'Invalid credentials'})
@@ -174,4 +174,126 @@ router.post('/login', (req, res) => {
         }).catch(err=>console.log(err))
     }
 })
+
+// router.post('/otherUserData', (req, res) => {
+//     const { email } = req.body;
+
+//     User.findOne({ email: email })
+//         .then(savedUser => {
+//             if (!savedUser) {
+//             return res.status(422).json({msg:'Invalid email'})
+//             } else {
+//                 res.status(200).json({msg:"User found",savedUser})
+//         }
+//     })
+// })
+// eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2NGFhZmVmNWM3Yjk2MWJiNTU1YmE2NDQiLCJpYXQiOjE2ODg5Mjc5OTB9.KQkDH3D6zyUeyRX7Wfdt8vV5NzXrzJHGENW-5FSvTkk
+router.get('/userData', (req, res) => {
+    const { authorization } = req.headers;
+  
+    if (!authorization) return res.status(401).json({ error: "no authorization provided" });
+    // if token is provided
+    const token = authorization.replace("Bearer ", "");
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, payload) => {
+        if (err) return res.status(401).json({ error: "Invalid token" })
+        
+        const { _id } = payload;
+        User.findById(_id).then(
+            userData => {
+                res.status(200).json({msg:"User found",user:userData});
+            }
+        )
+    })
+})
+
+// change password route
+router.post('/changePassword', (req, res) => {
+    const { oldPassword, newPassword, email } = req.body;
+
+    if (!oldPassword || !newPassword || !email) {
+        return res.status(422).json({ err: 'please fill all the fields' });
+
+    } else {
+        User.findOne({ email:email})
+            .select('+password')
+            .then(async savedUser => {
+                if (savedUser) {
+                    bcrypt.compare(oldPassword, savedUser.password)
+                        .then(doMatch => {
+                            if (doMatch) {
+                                savedUser.password = newPassword
+                                savedUser.save()
+                                    .then(user => {
+                                        res.json({ msg: 'Password changed successfully' });
+                                    })
+                                    .catch(err => {
+                                        return res.status(422).json({msg:'Server error'})
+                                    })
+                            } else {
+                                return res.status(422).json({err:'Invalid credentials'})     
+                            }
+                    })
+                } else {
+                    return res.status(422).json({err:'Invalid credentials'})
+            }
+        })
+    }
+})
+
+router.post('/setUsername', (req, res) => {
+    const { username, email } = req.body
+    if (!username || !email) {
+        return res.status(422).json({err:'please fill all the fields'})
+    }
+
+    User.find({ username }).then(async (savedUser) => {
+        if (savedUser.length > 0) {
+            return res.status(422).json({msg:'Username already exists'})
+        }
+        else {
+            User.findOne({ email: email })
+                .then(async savedUser => {
+                    if (savedUser) {
+                        savedUser.username = username
+                        savedUser.save()
+                            .then(user => {
+                            res.json({msg:'Username changed successfully'})
+                            })
+                            .catch(err => {
+                            return res.status(422).json({err:'Server error'})
+                        })
+                    } else {
+                        return res.status(422).json({err:'Invalid credentials'})
+                }
+            })
+        }
+    })
+})
+
+router.post('/setDescription', (req, res) => {
+    const { description, email } = req.body;
+
+    if (!description || !email) {
+        return res.status(422).json({err:'Please fill all the fields'})
+    }
+
+    User.findOne({ email })
+        .then(savedUser => {
+            savedUser.description = description
+            savedUser.save()
+                .then(user => {
+                    return res.status(200).json({msg:'Description changed successfully'})
+                })
+                .catch(err => {
+                return res.status(422).json({err:'Server error'})
+            })
+            
+        })
+        .catch(err => {
+        return res.status(422).json({err:'Unable to process the request'})
+    })
+})
+
+
 module.exports = router
